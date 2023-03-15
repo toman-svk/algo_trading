@@ -9,7 +9,7 @@ class Database:
         self.dbname = dbname
         self.user = user
         self.port = port
-
+        print('Database object was initialized.')
 
 
     def connect(self):
@@ -22,12 +22,10 @@ class Database:
         print('Connected to database.')
 
 
-
     def disconnect(self):
         self.cur.close()
         self.conn.close()
         print('Disconnected from database.')
-
 
 
     def get_table_list(self):
@@ -41,7 +39,6 @@ class Database:
             print(table_name[0])
 
         self.disconnect()
-
 
 
     def create_table(self, table_name, **columns):
@@ -109,36 +106,53 @@ class Database:
 
 
     
-    def insert_into_table(self, table_name, data):
+    # def insert_into_table(self, table_name, data_dict):
 
-        self.connect()
+    #     self.connect()
 
-        # Construct the INSERT query
-        columns = ", ".join(data.keys())
-        values = ", ".join([f"%({key})s" for key in data.keys()])
-        query = f"INSERT INTO {table_name} ({columns}) VALUES ({values})"
+    #     # Construct the INSERT query
+    #     columns = ", ".join(data_dict.keys())
+    #     values = ", ".join([f"%({key})s" for key in data.keys()])
+    #     query = f"INSERT INTO {table_name} ({columns}) VALUES ({values})"
 
-        # Execute the INSERT query with the data provided
+    #     # Execute the INSERT query with the data provided
     
-        self.cur.execute(query, data)
-        self.conn.commit()
-        print(f'Inserted data into table {table_name}')
+    #     self.cur.execute(query, data)
+    #     self.conn.commit()
+    #     print(f'Inserted data into table {table_name}')
 
-        # except:
-        #     print(f'There was a problem while inserting data into table {table_name}')
+    #     # except:
+    #     #     print(f'There was a problem while inserting data into table {table_name}')
 
+    #     self.disconnect()
+
+
+    def insert_into_table(self, table_name, data_dict):
+        self.connect()
+        
+        # Get the list of column names from the dictionary keys
+        columns = ", ".join(data_dict.keys())
+        
+        # Loop through the values and construct the INSERT query for each row
+        for i in range(len(data_dict[list(data_dict.keys())[0]])):
+            values = []
+            for key in data_dict.keys():
+                values.append(data_dict[key][i])
+            values_str = ", ".join([f"'{val}'" for val in values])
+            query = f"INSERT INTO {table_name} ({columns}) VALUES ({values_str})"
+            
+            # Execute the INSERT query with the current row of values
+            self.cur.execute(query)
+            self.conn.commit()
+        
+        print(f"Inserted data into table {table_name}")
         self.disconnect()
 
 
     
     def download_table(self, table_name):
-
         self.connect()
-
         query = f"SELECT * FROM {table_name}"
-
-        # Execute the SELECT query and fetch the results
-        
         try:
             self.cur.execute(query)
             rows = self.cur.fetchall()
@@ -152,55 +166,37 @@ class Database:
             print(f'There was an error downloading table {table_name}')
 
 
-    # def remove_duplicates(self, table_name, unique_column):
-    #     self.connect()
-
-    #     # Get the schema name of the original table
-    #     self.cur.execute(f"SELECT table_schema FROM information_schema.tables WHERE table_name = '{table_name}'")
-    #     schema_name = self.cur.fetchone()[0]
-
-    #     # Create a temporary table with unique rows in the same schema as the original table
-    #     self.cur.execute(f"CREATE TEMP TABLE {schema_name}.temp_table AS SELECT DISTINCT ON ({unique_column}) * FROM {table_name}")
-
-    #     # Delete the original table
-    #     self.cur.execute(f"DROP TABLE {table_name}")
-
-    #     # Rename the temporary table to the original table name in the same schema as the original table
-    #     self.cur.execute(f"ALTER TABLE {schema_name}.temp_table RENAME TO {table_name}")
-
-    #     self.conn.commit()
-    #     self.disconnect()
 
     def remove_duplicates(self, table_name, unique_column):
         self.connect()
-
-        # Get the schema name of the original table
         self.cur.execute(f"SELECT table_schema FROM information_schema.tables WHERE table_name = '{table_name}'")
         schema_name = self.cur.fetchone()[0]
-
-        # Create a new table with unique rows in the same schema as the original table
         self.cur.execute(f"CREATE TABLE {schema_name}.{table_name}_temp AS SELECT DISTINCT ON ({unique_column}) * FROM {schema_name}.{table_name}")
-
-        # Delete the original table
         self.cur.execute(f"DROP TABLE {schema_name}.{table_name}")
-
-        # Rename the temporary table to the original table name in the same schema as the original table
         self.cur.execute(f"ALTER TABLE {schema_name}.{table_name}_temp RENAME TO {table_name}")
-
         self.conn.commit()
         self.disconnect()
 
 
     def create_dataframe_from_table(self, table_name):
-        
         self.connect()
-
         self.cur.execute(f"SELECT * FROM {table_name}")
         data = self.cur.fetchall()
-
         column_names = [desc[0] for desc in self.cur.description]
         df = pd.DataFrame(data, columns=column_names)
-
         self.disconnect()
+        return df
+    
+    def fetch_todays_data(self, table_name, published_at_column):
 
+        self.connect()
+
+        query = f"SELECT * FROM {table_name} WHERE {published_at_column}::date = %s"
+        today = datetime.date.today()
+        self.cur.execute(query, (today,))
+
+        data = self.cur.fetchall()
+        column_names = [desc[0] for desc in self.cur.description]
+        df = pd.DataFrame(data, columns=column_names)
+        self.disconnect()
         return df
